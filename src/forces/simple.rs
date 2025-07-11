@@ -1,6 +1,7 @@
 //! Simple [`Force`]s used to transform the graph.
 
 use nalgebra::SVector;
+use petgraph::{csr::IndexType, EdgeType};
 
 use crate::{Field, Force, ForceGraph};
 
@@ -10,8 +11,12 @@ pub struct Scale<T: Field> {
     pub factor: T,
 }
 
-impl<T: Field, const D: usize, N, E> Force<T, D, N, E> for Scale<T> {
-    fn apply(&mut self, graph: &mut ForceGraph<T, D, N, E>) {
+impl<T: Field, const D: usize, N, E, Ty, Ix> Force<T, D, N, E, Ty, Ix> for Scale<T>
+where
+    Ty: EdgeType,
+    Ix: IndexType,
+{
+    fn apply(&mut self, graph: &mut ForceGraph<T, D, N, E, Ty, Ix>) {
         graph
             .node_weights_mut()
             .for_each(|(_, pos)| pos.coords.scale_mut(self.factor));
@@ -31,8 +36,12 @@ impl<T: Field, const D: usize> Translate<T, D> {
     }
 }
 
-impl<T: Field, const D: usize, N, E> Force<T, D, N, E> for Translate<T, D> {
-    fn apply(&mut self, graph: &mut ForceGraph<T, D, N, E>) {
+impl<T: Field, const D: usize, N, E, Ty, Ix> Force<T, D, N, E, Ty, Ix> for Translate<T, D>
+where
+    Ty: EdgeType,
+    Ix: IndexType,
+{
+    fn apply(&mut self, graph: &mut ForceGraph<T, D, N, E, Ty, Ix>) {
         graph
             .node_weights_mut()
             .for_each(|(_, pos)| pos.coords += self.translation);
@@ -43,8 +52,12 @@ impl<T: Field, const D: usize, N, E> Force<T, D, N, E> for Translate<T, D> {
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Center;
 
-impl<T: Field, const D: usize, N, E> Force<T, D, N, E> for Center {
-    fn apply(&mut self, graph: &mut ForceGraph<T, D, N, E>) {
+impl<T: Field, const D: usize, N, E, Ty, Ix> Force<T, D, N, E, Ty, Ix> for Center
+where
+    Ty: EdgeType,
+    Ix: IndexType,
+{
+    fn apply(&mut self, graph: &mut ForceGraph<T, D, N, E, Ty, Ix>) {
         let avg: SVector<T, D> = graph
             .node_weights()
             .map(|(_, p)| p.coords)

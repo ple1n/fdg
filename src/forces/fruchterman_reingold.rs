@@ -3,6 +3,7 @@
 use std::{collections::HashMap, hash::BuildHasherDefault, ops::AddAssign};
 
 use nalgebra::{Point, SVector};
+use petgraph::{csr::IndexType, EdgeType};
 use petgraph::{stable_graph::NodeIndex, visit::EdgeRef};
 
 use crate::{Field, Force, ForceGraph};
@@ -10,7 +11,7 @@ use crate::{Field, Force, ForceGraph};
 type HashFn = BuildHasherDefault<rustc_hash::FxHasher>;
 
 /// General configuration parameters for Fruchterman-Reingold (1991) forces.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FruchtermanReingoldConfiguration<T: Field> {
     pub dt: T,
     pub cooloff_factor: T,
@@ -30,15 +31,20 @@ impl<T: Field> Default for Config<T> {
 }
 
 /// A basic implementation
-#[derive(Default, Debug, Clone)]
-pub struct FruchtermanReingold<T: Field, const D: usize> {
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct FruchtermanReingold<T: Field, const D: usize, Ix: IndexType> {
     pub conf: Config<T>,
-    pub velocities: HashMap<NodeIndex, SVector<T, D>, HashFn>,
+    pub velocities: HashMap<NodeIndex<Ix>, SVector<T, D>, HashFn>,
 }
 
-impl<T: Field, const D: usize, N, E> Force<T, D, N, E> for FruchtermanReingold<T, D> {
-    fn apply(&mut self, graph: &mut ForceGraph<T, D, N, E>) {
-        let start_positions: HashMap<NodeIndex, Point<T, D>, HashFn> = graph
+impl<T: Field, const D: usize, N, E, Ty, Ix> Force<T, D, N, E, Ty, Ix>
+    for FruchtermanReingold<T, D, Ix>
+where
+    Ty: EdgeType,
+    Ix: IndexType,
+{
+    fn apply(&mut self, graph: &mut ForceGraph<T, D, N, E, Ty, Ix>) {
+        let start_positions: HashMap<NodeIndex<Ix>, Point<T, D>, HashFn> = graph
             .node_indices()
             .map(|idx| (idx, graph.node_weight(idx).unwrap().1))
             .collect();
@@ -89,14 +95,19 @@ impl<T: Field, const D: usize, N, E> Force<T, D, N, E> for FruchtermanReingold<T
 ///
 /// Attraction between nodes is multiplied by the value of their linking edge, the edge weight must be the same type as the vector coords.
 #[derive(Default, Debug, Clone)]
-pub struct FruchtermanReingoldWeighted<T: Field, const D: usize> {
+pub struct FruchtermanReingoldWeighted<T: Field, const D: usize, Ix: IndexType> {
     pub conf: Config<T>,
-    pub velocities: HashMap<NodeIndex, SVector<T, D>, HashFn>,
+    pub velocities: HashMap<NodeIndex<Ix>, SVector<T, D>, HashFn>,
 }
 
-impl<T: Field, const D: usize, N> Force<T, D, N, T> for FruchtermanReingoldWeighted<T, D> {
-    fn apply(&mut self, graph: &mut ForceGraph<T, D, N, T>) {
-        let start_positions: HashMap<NodeIndex, Point<T, D>, HashFn> = graph
+impl<T: Field, const D: usize, N, Ty, Ix> Force<T, D, N, T, Ty, Ix>
+    for FruchtermanReingoldWeighted<T, D, Ix>
+where
+    Ty: EdgeType,
+    Ix: IndexType,
+{
+    fn apply(&mut self, graph: &mut ForceGraph<T, D, N, T, Ty, Ix>) {
+        let start_positions: HashMap<NodeIndex<Ix>, Point<T, D>, HashFn> = graph
             .node_indices()
             .map(|idx| (idx, graph.node_weight(idx).unwrap().1))
             .collect();
@@ -158,23 +169,26 @@ pub use parallel::*;
 #[cfg(feature = "rayon")]
 mod parallel {
     use super::{
-        AddAssign, Config, Field, Force, ForceGraph, HashFn, HashMap, NodeIndex, Point,
-        SVector,
+        AddAssign, Config, Field, Force, ForceGraph, HashFn, HashMap, NodeIndex, Point, SVector,
     };
+    use petgraph::{csr::IndexType, EdgeType};
     use rayon::prelude::*;
 
     /// An alternative implementation of Fruchterman-Reingold (1991) that computes the forces in parallel with [`rayon`].
     #[derive(Default, Debug, Clone)]
-    pub struct FruchtermanReingoldParallel<T: Field, const D: usize> {
+    pub struct FruchtermanReingoldParallel<T: Field, const D: usize, Ix: IndexType> {
         pub conf: Config<T>,
-        pub velocities: HashMap<NodeIndex, SVector<T, D>, HashFn>,
+        pub velocities: HashMap<NodeIndex<Ix>, SVector<T, D>, HashFn>,
     }
 
-    impl<T: Field, const D: usize, N: Send + Sync, E: Send + Sync> Force<T, D, N, E>
-        for FruchtermanReingoldParallel<T, D>
+    impl<T: Field, const D: usize, N: Send + Sync, E: Send + Sync, Ty, Ix> Force<T, D, N, E, Ty, Ix>
+        for FruchtermanReingoldParallel<T, D, Ix>
+    where
+        Ix: IndexType + Send + Sync,
+        Ty: EdgeType + Send + Sync,
     {
-        fn apply(&mut self, graph: &mut ForceGraph<T, D, N, E>) {
-            let start_positions: HashMap<NodeIndex, Point<T, D>, HashFn> = graph
+        fn apply(&mut self, graph: &mut ForceGraph<T, D, N, E, Ty, Ix>) {
+            let start_positions: HashMap<NodeIndex<Ix>, Point<T, D>, HashFn> = graph
                 .node_indices()
                 .par_bridge()
                 .map(|idx| (idx, graph.node_weight(idx).unwrap().1))

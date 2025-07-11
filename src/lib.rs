@@ -1,5 +1,4 @@
 #![doc = include_str!("../README.md")]
-
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 #![deny(clippy::pedantic)]
 #![allow(clippy::module_name_repetitions)]
@@ -9,8 +8,9 @@ use nalgebra::{
 };
 use num_traits::Float;
 use petgraph::{
+    csr::IndexType,
     stable_graph::{DefaultIx, StableGraph},
-    Directed,
+    Directed, EdgeType,
 };
 use rand::distributions::{uniform::SampleUniform, Distribution, Uniform};
 
@@ -27,46 +27,62 @@ pub use rand::distributions as rand_distributions;
 pub type ForceGraph<T, const D: usize, N, E, Ty = Directed, Ix = DefaultIx> =
     StableGraph<(N, Point<T, D>), E, Ty, Ix>;
 
+pub type ForceGraphNode<T, const D: usize, N> = (N, Point<T, D>);
+
 /// A generic force trait representing an iterable transformation on a [`ForceGraph`].
 ///
 /// T: Coordinate type ([`Field`])
 /// D: Number of dimensions (usize)
 /// N: Node weight type
 /// E: Edge weight type
-pub trait Force<T: Field, const D: usize, N, E> {
+pub trait Force<T: Field, const D: usize, N, E, Ty, Ix> {
     /// Apply the force to a given graph.
-    fn apply(&mut self, graph: &mut ForceGraph<T, D, N, E>);
+    fn apply(&mut self, graph: &mut ForceGraph<T, D, N, E, Ty, Ix>);
 
     /// Apply the force to a given graph `n` times.
-    fn apply_many(&mut self, graph: &mut ForceGraph<T, D, N, E>, n: usize) {
+    fn apply_many(&mut self, graph: &mut ForceGraph<T, D, N, E, Ty, Ix>, n: usize) {
         for _ in 0..n {
             Self::apply(self, graph);
         }
     }
 }
 
-impl<F, T: Field, const D: usize, N, E> Force<T, D, N, E> for F
+impl<F, T: Field, const D: usize, N, E, Ty, Ix> Force<T, D, N, E, Ty, Ix> for F
 where
-    F: Fn(&mut ForceGraph<T, D, N, E>),
+    F: Fn(&mut ForceGraph<T, D, N, E, Ty, Ix>),
 {
-    fn apply(&mut self, graph: &mut ForceGraph<T, D, N, E>) {
-        self(graph)
+    fn apply(&mut self, graph: &mut ForceGraph<T, D, N, E, Ty, Ix>) {
+        self(graph);
     }
 }
 
 /// Create a [`ForceGraph`] from any graph and randomize the node positions within a uniform distribution around the origin in `-range` to `range`.
-pub fn init_force_graph_uniform<T: Field + SampleUniform, const D: usize, N: Clone, E: Clone>(
-    input: impl Into<StableGraph<N, E>>,
+pub fn init_force_graph_uniform<
+    T: Field + SampleUniform,
+    const D: usize,
+    N: Clone,
+    E: Clone,
+    Ty: EdgeType,
+    Ix: IndexType,
+>(
+    input: impl Into<StableGraph<N, E, Ty, Ix>>,
     range: T,
-) -> ForceGraph<T, D, N, E> {
+) -> ForceGraph<T, D, N, E, Ty, Ix> {
     init_force_graph(input, Uniform::new(-range, range))
 }
 
 /// Create a [`ForceGraph`] from any graph and randomize the node positions within a given distribution.
-pub fn init_force_graph<T: Field, const D: usize, N: Clone, E: Clone>(
-    input: impl Into<StableGraph<N, E>>,
+pub fn init_force_graph<
+    T: Field,
+    const D: usize,
+    N: Clone,
+    E: Clone,
+    Ty: EdgeType,
+    Ix: IndexType,
+>(
+    input: impl Into<StableGraph<N, E, Ty, Ix>>,
     distribution: impl Distribution<T>,
-) -> ForceGraph<T, D, N, E> {
+) -> ForceGraph<T, D, N, E, Ty, Ix> {
     let mut graph = input.into().map(
         |_, node| (node.clone(), Point::default()),
         |_, edge| edge.clone(),
@@ -78,12 +94,15 @@ pub fn init_force_graph<T: Field, const D: usize, N: Clone, E: Clone>(
 }
 
 /// Randomize all the node positions in a [`ForceGraph`] with a given distribution.
-/// 
+///
 /// This is helpful for generating starting positions.
-pub fn randomize_positions<T: Field, const D: usize, N, E>(
-    graph: &mut ForceGraph<T, D, N, E>,
+pub fn randomize_positions<T: Field, const D: usize, N, E, Ty, Ix>(
+    graph: &mut ForceGraph<T, D, N, E, Ty, Ix>,
     distribution: impl Distribution<T>,
-) {
+) where
+    Ty: EdgeType,
+    Ix: IndexType,
+{
     let mut rng = rand::thread_rng();
 
     for (_, pos) in graph.node_weights_mut() {
