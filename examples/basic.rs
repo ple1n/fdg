@@ -1,7 +1,7 @@
 use fdg::{fruchterman_reingold::FruchtermanReingold, Force, ForceGraph, simple::Center};
 
 fn main() {
-    let mut rng = rand::thread_rng();
+    let mut rng = petgraph_gen::rand::rng();
     let dataset = petgraph_gen::barabasi_albert_graph(&mut rng, 10, 3, None);
 
     let mut graph: ForceGraph<f32, 2, (), ()> = fdg::init_force_graph_uniform(dataset, 10.0);
